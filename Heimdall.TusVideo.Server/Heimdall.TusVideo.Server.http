@@ -1,0 +1,14 @@
+@Heimdall.TusVideo.Server_HostAddress = http://localhost:5000
+
+# Test server root endpoint
+GET {{Heimdall.TusVideo.Server_HostAddress}}/
+Accept: text/plain
+
+###
+
+# Test TUS OPTIONS endpoint (capability discovery)
+OPTIONS {{Heimdall.TusVideo.Server_HostAddress}}/files
+Tus-Resumable: 1.0.0
+
+###
+
