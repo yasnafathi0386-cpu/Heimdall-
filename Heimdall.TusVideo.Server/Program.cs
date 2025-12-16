@@ -1,8 +1,22 @@
+using tusdotnet;
+using tusdotnet.Models;
+using tusdotnet.Models.Configuration;
+using tusdotnet.Stores;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .WithExposedHeaders("Upload-Offset", "Location", "Upload-Length", "Tus-Resumable");
+    });
+});
 
 var app = builder.Build();
 
@@ -12,30 +26,33 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+app.UseCors();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// Create uploads directory if it doesn't exist
+var uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+Directory.CreateDirectory(uploadPath);
 
-app.MapGet("/weatherforecast", () =>
+// Configure TUS middleware
+app.UseTus(httpContext => new DefaultTusConfiguration
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    Store = new TusDiskStore(uploadPath),
+    UrlPath = "/files",
+    Events = new Events
+    {
+        OnFileCompleteAsync = async eventContext =>
+        {
+            var file = await eventContext.GetFileAsync();
+            var metadata = await file.GetMetadataAsync(eventContext.CancellationToken);
+            
+            Console.WriteLine($"Upload complete: {file.Id}");
+            if (metadata.ContainsKey("name"))
+            {
+                Console.WriteLine($"File name: {metadata["name"].GetString(System.Text.Encoding.UTF8)}");
+            }
+        }
+    }
+});
+
+app.MapGet("/", () => "TUS Video Upload Server is running. Upload endpoint: /files");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
